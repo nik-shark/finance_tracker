@@ -1,20 +1,25 @@
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas import OperationRequest
 from app.repository import wallets as wallets_repository
 
 
-def add_income(operations: OperationRequest):
+async def add_income(
+        operations: OperationRequest,
+        db: AsyncSession
+):
 
-    if wallets_repository.is_wallet_exist(operations.wallet_name):
+    if not await wallets_repository.is_wallet_exist(operations.wallet_name, db):
         raise HTTPException(
             status_code=404,
             detail=f'Wallet {operations.wallet_name} not found',
         )
 
-    new_balance = wallets_repository.add_income(
+    wallet = await wallets_repository.add_income(
         operations.wallet_name,
-        operations.amount
+        operations.amount,
+        db
     )
 
     return {
@@ -22,33 +27,39 @@ def add_income(operations: OperationRequest):
         'wallet': operations.wallet_name,
         'amount': operations.amount,
         'descriptions': operations.description,
-        'new_balance': new_balance,
+        'new_balance': wallet.balance,
     }
 
 
-def add_expense(operations: OperationRequest):
+async def add_expense(
+        operations: OperationRequest,
+        db: AsyncSession
+):
 
-    if not wallets_repository.is_wallet_exist(operations.wallet_name):
+    if not await wallets_repository.is_wallet_exist(operations.wallet_name, db):
         raise HTTPException(
             status_code=404,
             detail=f'Wallet {operations.wallet_name} not found',
         )
 
-    balance = wallets_repository.get_wallet_balance_by_name(operations.wallet_name)
-    if balance < operations.amount:
+    wallet = await wallets_repository.get_wallet_balance_by_name(operations.wallet_name, db)
+    if wallet.balance < operations.amount:
         raise HTTPException(
             status_code=400,
             detail=f'Insufficient funds. '
-                   f'Available: {balance}',
+                   f'Available: {wallet.balance}',
 
         )
 
-    new_balance = wallets_repository.add_expense(operations.wallet_name)
+    wallet = await wallets_repository.add_expense(
+        operations.wallet_name,
+        operations.amount,
+        db)
 
     return {
         'message': 'Expense added',
         'wallet': operations.wallet_name,
         'amount': operations.amount,
         'descriptions': operations.description,
-        'new_balance': new_balance,
+        'new_balance': wallet.balance,
     }
